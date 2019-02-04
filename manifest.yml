@@ -1,0 +1,5 @@
+---
+applications:
+  - name: scg-route-service
+    memory: 2G
+    path: target/quick-hit-gateway-0.0.1-SNAPSHOT.jar
