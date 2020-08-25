@@ -16,7 +16,7 @@ change the default behavior to reject by default by adding `0.0.0.0/0` to BAD_SO
 cf push my-sensitive-app
 # cd .../ipfilter-route-service-scg
 cf push ip-filter-app
-cf set-env ip-filter-app GOOD_SOURCE_IPS "192.168.12.0/24,10.10.30.45/32,10.10.40.0/16"
+cf set-env ip-filter-app GOOD_SOURCE_IPS "192.168.12.0/24,10.20.30.45/32,10.10.0.0/16"
 # reject everything not in GOOD_SOURCE_IPS
 cf set-env ip-filter-app BAD_SOURCE_IPS "0.0.0.0/0"
 cf v3-zdt-restart ip-filter-app
