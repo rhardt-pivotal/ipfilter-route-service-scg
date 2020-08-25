@@ -13,9 +13,11 @@ import org.springframework.cloud.gateway.route.RouteLocator;
 import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
+import javax.annotation.PostConstruct;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -24,8 +26,9 @@ import java.util.stream.Collectors;
 
 /**
  * Meant to be used as a route service that can be bound to a CF route.  It will check the
- * X-Forwarded-For header values against a black list (spring property: bad.source.ips)
- * The blacklist should be a comma-separated list of CIDRs, e.g.
+ * X-Forwarded-For header values against an accept list and a reject list
+ * (spring property: bad.source.ips and good.source.ips)
+ * They should each be a comma-separated list of CIDRs, e.g.
  * 10.20.30.0/24,209.171.0.0/16
  * If the source is on the blacklist, it will return a 503, otherwise it will
  * proxy (incl. all headers, paths, query strings) to whatever is in the
@@ -70,11 +73,20 @@ public class QuickHitGatewayApplication {
 	@Value("${good.source.ips:255.255.255.255}")
 	String goodSources;
 
+	@Value("${bad.source.ips:255.255.255.255}")
+	String badSources;
 
-	public AsyncPredicate<ServerWebExchange> apply(String goodSources) {
+	private List<IpSubnetFilterRule> goodIpRules;
+	private List<IpSubnetFilterRule> badIpRules;
 
-		List<IpSubnetFilterRule> sources = convert(Arrays.asList(goodSources.split(",")));
-		log.debug("** SOURCES: "+sources);
+	@PostConstruct
+	private void buildSources() {
+		goodIpRules = convert(Arrays.asList(goodSources.split(",")));
+		badIpRules = convert(Arrays.asList(badSources.split(",")));
+	}
+
+
+	public AsyncPredicate<ServerWebExchange> apply() {
 
 		return exchange -> {
 			List<String> xffs = exchange.getRequest().getHeaders().get("X-Forwarded-For");
@@ -88,16 +100,24 @@ public class QuickHitGatewayApplication {
 			for (String xff : xffs) {
 				InetSocketAddress isa = new InetSocketAddress(xff, 0);
 				log.debug("Checking: "+isa);
-				for (IpSubnetFilterRule rule : sources) {
-					log.debug("Checking "+isa.getHostString()+" against "+rule);
+				for (IpSubnetFilterRule rule : goodIpRules) {
+					log.debug("Checking "+isa.getHostString()+" against good rule: "+rule);
 					if (rule.matches(isa)){
-						log.debug("MATCHES");
+						log.debug("MATCHED A GOOD IP: passing through");
 						return Mono.just(true);
 					}
 				}
+				for (IpSubnetFilterRule rule : badIpRules) {
+					log.debug("Checking "+isa.getHostString()+" against bad rule: "+rule);
+					if (rule.matches(isa)){
+						log.debug("MATCHED A BAD IP: immediately denying");
+						return Mono.just(false);
+					}
+				}
+
 			}
-			log.debug("NO MATCH");
-			return Mono.just(false);
+			log.debug("NO EXPLICIT MATCH FOR "+xffs+" - default is to pass through");
+			return Mono.just(true);
 		};
 	}
 
@@ -109,7 +129,7 @@ public class QuickHitGatewayApplication {
 		//@formatter:off
 		return builder.routes()
 				//x-forwarded-for in the good range, send on to the intended destination
-				.route("good_route", r -> r.asyncPredicate(apply(goodSources))
+				.route("good_route", r -> r.asyncPredicate(apply())
 						.filters(f -> f.requestHeaderToRequestUri("X-CF-Forwarded-Url")).uri("no://op"))
 				//otherwise, send a 401,
 				.route("default_bad_route", r -> r.alwaysTrue()
