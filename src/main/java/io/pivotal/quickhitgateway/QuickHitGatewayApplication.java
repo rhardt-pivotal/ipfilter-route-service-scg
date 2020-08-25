@@ -67,12 +67,13 @@ public class QuickHitGatewayApplication {
 	}
 
 
-	@Value("${bad.source.ips:255.255.255.255}")
-	String badSources;
+	@Value("${good.source.ips:255.255.255.255}")
+	String goodSources;
 
 
-	public AsyncPredicate<ServerWebExchange> apply(String badSources) {
-		List<IpSubnetFilterRule> sources = convert(Arrays.asList(badSources.split(",")));
+	public AsyncPredicate<ServerWebExchange> apply(String goodSources) {
+
+		List<IpSubnetFilterRule> sources = convert(Arrays.asList(goodSources.split(",")));
 		log.debug("** SOURCES: "+sources);
 
 		return exchange -> {
@@ -107,14 +108,13 @@ public class QuickHitGatewayApplication {
 
 		//@formatter:off
 		return builder.routes()
-				//x-forwarded-for in the bad range, send a 401
-				.route("bad_route", r -> r.asyncPredicate(apply(badSources))
+				//x-forwarded-for in the good range, send on to the intended destination
+				.route("good_route", r -> r.asyncPredicate(apply(goodSources))
+						.filters(f -> f.requestHeaderToRequestUri("X-CF-Forwarded-Url")).uri("no://op"))
+				//otherwise, send a 401,
+				.route("default_bad_route", r -> r.alwaysTrue()
 						.filters(f -> f.filter(ssgf.apply(c -> c.setStatus("SERVICE_UNAVAILABLE"))))
 						.uri("no://op"))
-				//otherwise, there should be a x-cf-forwarded-url header,
-				// send it there.  If it's not there, this isn't be used as a route-service
-				.route("good_route", r -> r.alwaysTrue()
-						.filters(f -> f.requestHeaderToRequestUri("X-CF-Forwarded-Url")).uri("no://op"))
 				.build();
 		//@formatter:on
 	}
