@@ -70,10 +70,10 @@ public class QuickHitGatewayApplication {
 	}
 
 
-	@Value("${good.source.ips:255.255.255.255}")
+	@Value("${accept.source.ips:255.255.255.255}")
 	String goodSources;
 
-	@Value("${bad.source.ips:255.255.255.255}")
+	@Value("${deny.source.ips:255.255.255.255}")
 	String badSources;
 
 	private List<IpSubnetFilterRule> goodIpRules;

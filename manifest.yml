@@ -4,5 +4,5 @@ applications:
     memory: 2G
     path: target/quick-hit-gateway-0.0.1-SNAPSHOT.jar
     env:
-      GOOD_SOURCE_IPS: "192.168.12.0/24"
-      BAD_SOURCE_IPS: "10.10.0.0/16,10.20.0.0/16"
+      ACCEPT_SOURCE_IPS: "192.168.12.0/24"
+      DENY_SOURCE_IPS: "10.10.0.0/16,10.20.0.0/16"
