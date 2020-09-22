@@ -19,6 +19,8 @@ import reactor.core.publisher.Mono;
 
 import javax.annotation.PostConstruct;
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -76,27 +78,64 @@ public class QuickHitGatewayApplication {
 	@Value("${deny.source.ips:255.255.255.255}")
 	String badSources;
 
+	@Value("${deny.url.paths:%%%%%%%%}")
+	String rejectPaths;
+
+	private static final String MATCH_ALL_PATHS = "%%%MATCH_ALL_PATHS%%%";
+	private static final String X_CF_FORWARDED_URL = "X-Cf-Forwarded-Url";
+
+
 	private List<IpSubnetFilterRule> goodIpRules;
 	private List<IpSubnetFilterRule> badIpRules;
+	private List<String> rejectPathStrings;
 
 	@PostConstruct
 	private void buildSources() {
 		goodIpRules = convert(Arrays.asList(goodSources.split(",")));
 		badIpRules = convert(Arrays.asList(badSources.split(",")));
+		rejectPathStrings = Arrays.asList(rejectPaths.split(",")).stream().map(String::trim).collect(Collectors.toList());
 	}
 
 
 	public AsyncPredicate<ServerWebExchange> apply() {
 
 		return exchange -> {
+
+			//exchange.getRequest().getHeaders().forEach((k,v) -> log.debug("Header: {}  ->  {}", k, v));
+
 			List<String> xffs = exchange.getRequest().getHeaders().get("X-Forwarded-For");
 			if (xffs == null || xffs.size() == 0) {
+				log.warn("No X-Forwarded-For header, rejecting");
 				return Mono.just(false);
 			}
 			if (xffs.get(0).contains(",")){
 				String xffStr = xffs.get(0);
 				xffs = Arrays.asList(xffStr.split(",")).stream().map(s -> s.trim()).collect(Collectors.toList());
 			}
+
+			List<String> xcffu =  exchange.getRequest().getHeaders().get(X_CF_FORWARDED_URL);
+			if (xcffu == null || xcffu.size() == 0) {
+				log.warn("No X-CF-Forwarded-URL header, rejecting");
+				return Mono.just(false);
+			}
+			String xcfString = xcffu.get(0);
+			String requestPath = null;
+			try {
+				requestPath = new URI(xcfString).getPath();
+				String[] rpArr = requestPath.split("\\/");
+				if (rpArr.length > 0) {
+					requestPath = rpArr[1];
+				}
+				else {
+					requestPath = "";
+				}
+			}
+			catch (URISyntaxException u) {
+				u.printStackTrace();
+				return Mono.just(false);
+			}
+
+
 			for (String xff : xffs) {
 				InetSocketAddress isa = new InetSocketAddress(xff, 0);
 				log.debug("Checking: "+isa);
@@ -110,8 +149,21 @@ public class QuickHitGatewayApplication {
 				for (IpSubnetFilterRule rule : badIpRules) {
 					log.debug("Checking "+isa.getHostString()+" against bad rule: "+rule);
 					if (rule.matches(isa)){
-						log.debug("MATCHED A BAD IP: immediately denying");
-						return Mono.just(false);
+						log.debug("MATCHED A BAD IP: checking path against paths to deny");
+						log.debug("PATH: {}", requestPath);
+						for (String mString : rejectPathStrings) {
+							if (mString.equalsIgnoreCase(MATCH_ALL_PATHS)) {
+								log.debug("found: "+MATCH_ALL_PATHS+" immediately rejecting");
+								return Mono.just(false);
+							}
+							else if (requestPath.equalsIgnoreCase(mString)) {
+								log.debug("PATH SEGMENT {} matched string: {} - immediately rejecting", requestPath, mString);
+								return Mono.just(false);
+							}
+						}
+						// if we get to this point, no matter how many reject ips match, they'll never match a reject path, so we allow the request through
+						log.debug("Matched a reject-IP but no reject-path, so letting the request through");
+						return Mono.just(true);
 					}
 				}
 

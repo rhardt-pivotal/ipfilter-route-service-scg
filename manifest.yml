@@ -5,4 +5,5 @@ applications:
     path: target/quick-hit-gateway-0.0.1-SNAPSHOT.jar
     env:
       ACCEPT_SOURCE_IPS: "192.168.12.0/24"
-      DENY_SOURCE_IPS: "10.10.0.0/16,10.20.0.0/16"
+      DENY_SOURCE_IPS: "10.10.0.0/16,10.20.0.0/16,10.168.0.0/16"
+      DENY_URL_PATHS: "uuid,anything"
