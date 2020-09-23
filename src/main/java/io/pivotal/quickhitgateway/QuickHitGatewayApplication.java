@@ -85,6 +85,10 @@ public class QuickHitGatewayApplication {
 	private static final String X_CF_FORWARDED_URL = "X-Cf-Forwarded-Url";
 
 
+	private static final String ROUTE_SERVICE_ALLOW = "ROUTE_SERVICE_ALLOW";
+	private static final String ROUTE_SERVICE_REJECT = "ROUTE_SERVICE_REJECT";
+
+
 	private List<IpSubnetFilterRule> goodIpRules;
 	private List<IpSubnetFilterRule> badIpRules;
 	private List<String> rejectPathStrings;
@@ -105,7 +109,7 @@ public class QuickHitGatewayApplication {
 
 			List<String> xffs = exchange.getRequest().getHeaders().get("X-Forwarded-For");
 			if (xffs == null || xffs.size() == 0) {
-				log.warn("No X-Forwarded-For header, rejecting");
+				log.warn("{}  No X-Forwarded-For header, rejecting", ROUTE_SERVICE_REJECT);
 				return Mono.just(false);
 			}
 			if (xffs.get(0).contains(",")){
@@ -115,7 +119,7 @@ public class QuickHitGatewayApplication {
 
 			List<String> xcffu =  exchange.getRequest().getHeaders().get(X_CF_FORWARDED_URL);
 			if (xcffu == null || xcffu.size() == 0) {
-				log.warn("No X-CF-Forwarded-URL header, rejecting");
+				log.warn("{}  No X-CF-Forwarded-URL header, rejecting", ROUTE_SERVICE_REJECT);
 				return Mono.just(false);
 			}
 			String xcfString = xcffu.get(0);
@@ -142,7 +146,7 @@ public class QuickHitGatewayApplication {
 				for (IpSubnetFilterRule rule : goodIpRules) {
 					log.debug("Checking "+isa.getHostString()+" against good rule: "+rule);
 					if (rule.matches(isa)){
-						log.debug("MATCHED A GOOD IP: passing through");
+						log.info("{}  MATCHED A GOOD IP: passing through",  ROUTE_SERVICE_ALLOW);
 						return Mono.just(true);
 					}
 				}
@@ -154,21 +158,24 @@ public class QuickHitGatewayApplication {
 						for (String mString : rejectPathStrings) {
 							if (mString.equalsIgnoreCase(MATCH_ALL_PATHS)) {
 								log.debug("found: "+MATCH_ALL_PATHS+" immediately rejecting");
+								log.warn("{}  Matched reject IP {} and {}", ROUTE_SERVICE_REJECT, isa.toString(), MATCH_ALL_PATHS);
 								return Mono.just(false);
 							}
 							else if (requestPath.equalsIgnoreCase(mString)) {
 								log.debug("PATH SEGMENT {} matched string: {} - immediately rejecting", requestPath, mString);
+								log.warn("{}  Matched Reject IP {} and Path: {}", ROUTE_SERVICE_REJECT, isa.toString(), mString);
 								return Mono.just(false);
 							}
 						}
 						// if we get to this point, no matter how many reject ips match, they'll never match a reject path, so we allow the request through
 						log.debug("Matched a reject-IP but no reject-path, so letting the request through");
+						log.info("{}  Matched reject IP {} but no reject path matched {}", ROUTE_SERVICE_ALLOW, isa.toString(), requestPath);
 						return Mono.just(true);
 					}
 				}
 
 			}
-			log.debug("NO EXPLICIT MATCH FOR "+xffs+" - default is to pass through");
+			log.info("{}  NO EXPLICIT MATCH FOR {} - default is to pass through", ROUTE_SERVICE_ALLOW, xffs);
 			return Mono.just(true);
 		};
 	}
