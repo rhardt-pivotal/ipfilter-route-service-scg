@@ -7,9 +7,11 @@ It can be used to limit access to other Cloud Foundry apps based on the source I
 
 The decision tree for allowing a request to pass is:
 1. If the `X-Forwarded-For` header falls within the CIDR range of ACCEPT_SOURCE_IPS, it is automatically let through
-2. Otherwise, if that header falls within the CIDR range of DENY_SOURCE_IPS, it is automatically rejected
-3. Finally, the default behavior is to allow through any IP that is not in a DENY_SOURCE_IPS range.  You can 
-change the default behavior to reject by default by adding `0.0.0.0/0` to DENY_SOURCE_IPS.   
+2. Otherwise, if that header falls within the CIDR range of DENY_SOURCE_IPS, it falls through to the next test
+3.  The next test is whether the first part of the request path matches anything in DENY_URL_PATHS, e.g. DENY_URL_PATHS="abcde,bcdef" https://myapp.com/abcde, https://myapp.com/bcdef/xyz will match, whereas https://myapp.com/xyz/abcde will _not_ match.
+4.  if the path matches, the request will be rejected, otherwise, it will be passed through even though the IP was within a DENY_SOURCE_IPS range.
+5. Finally, the default behavior is to allow through any IP that is not in a DENY_SOURCE_IPS range.  You can 
+change the default behavior to reject by default by adding `0.0.0.0/0` to DENY_SOURCE_IPS and "%%%%%%%%" for DENY_URL_PATHS   
 
 ```bash
 # cd .../my-sensitive-app
